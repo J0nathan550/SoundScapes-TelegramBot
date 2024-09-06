@@ -7,12 +7,20 @@
     <Nullable>enable</Nullable>
     <PublishAot>false</PublishAot>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <ApplicationIcon>soundscapes-logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="soundscapes-logo.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Downloader" Version="3.1.2" />
+    <PackageReference Include="InstagramApiSharp" Version="1.7.4" />
+    <PackageReference Include="RestTok" Version="1.0.1" />
     <PackageReference Include="SpotifyExplode" Version="1.1.2" />
     <PackageReference Include="Telegram.Bot" Version="19.0.0" />
+    <PackageReference Include="YoutubeExplode" Version="6.4.0" />
   </ItemGroup>
 
 </Project>

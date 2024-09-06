@@ -1,4 +1,5 @@
 ﻿using Downloader;
+using SoundScapes.Data;
 using SpotifyExplode;
 using SpotifyExplode.Tracks;
 using Telegram.Bot;
@@ -11,10 +12,14 @@ namespace SoundScapes;
 
 internal class Bot(string apiKey)
 {
+    private static readonly Queue<UserData> usersQueue = [];
     private readonly string API_KEY = apiKey;
-    private readonly Queue<UserData> usersQueue = [];
+
     private readonly SpotifyClient spotifyClient = new();
     private readonly string downloadPath = Path.Combine(AppContext.BaseDirectory, "Downloaded");
+    private readonly object uniqueFileIDLock = new();
+
+    private uint uniqueFileID = 0;
 
     private TelegramBotClient? telegramBotClient;
 
@@ -38,6 +43,17 @@ internal class Bot(string apiKey)
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"[INFO]: {userBot.Username} IS CONNECTED AND WORKING!");
             Console.ResetColor();
+            if (Directory.Exists(downloadPath))
+            {
+                foreach (var file in Directory.EnumerateFiles(downloadPath))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(file);
+                    }
+                    catch { }
+                }
+            }
             await telegramBotClient.ReceiveAsync(new DefaultUpdateHandler(HandleUpdateAsync, HandleErrorAsync), default);
         }
         catch
@@ -89,7 +105,8 @@ internal class Bot(string apiKey)
             await telegramBotClient!.SendTextMessageAsync(userData.ChatId, "Привіт! Щоб отримати музикальний файл ви повинні надіслати посилання на трек або на плейлист якщо хочете завантажити декілька пісень одразу." +
                 "\n\nПриклад посилань:\n" +
                 "- Spotify Track: https://open.spotify.com/track/...\n" +
-                "- Spotify Playlist: https://open.spotify.com/playlist/...\n\n" +
+                "- Spotify Playlist: https://open.spotify.com/playlist/...\n" +
+                "- Spotify Album: https://open.spotify.com/album/...\n" +
                 "Також планується (напевно) підтримка інших форматів медія. Щоб отримати список того що конвертується напишіть: /help_formats");
             usersQueue.Dequeue();
             return;
@@ -101,12 +118,13 @@ internal class Bot(string apiKey)
             Console.ResetColor();
             await telegramBotClient!.SendTextMessageAsync(userData.ChatId, "Наразі підтримуємо посилання:\n" +
                 "- Spotify Track: https://open.spotify.com/track/...\n" +
-                "- Spotify Playlist: https://open.spotify.com/playlist/...\n\n" +
+                "- Spotify Playlist: https://open.spotify.com/playlist/...\n" +
+                "- Spotify Album: https://open.spotify.com/album/...\n" +
                 "Також планується (напевно) підтримка інших форматів медія. Пишіть якщо потрібно у @j0nathan550");
             usersQueue.Dequeue();
             return;
         }
-        if (!message.Text.StartsWith("https://open.spotify.com/track/") && !message.Text.StartsWith("https://open.spotify.com/playlist/"))
+        if (!message.Text.StartsWith("https://open.spotify.com/track/") && !message.Text.StartsWith("https://open.spotify.com/playlist/") && !message.Text.StartsWith("https://open.spotify.com/album/"))
         {
             usersQueue.Dequeue();
             return;
@@ -116,6 +134,7 @@ internal class Bot(string apiKey)
 
         if (message.Text.StartsWith("https://open.spotify.com/track/")) currentUser.linkType = BaseUserData.LinkType.SpotifyTrack;
         else if (message.Text.StartsWith("https://open.spotify.com/playlist/")) currentUser.linkType = BaseUserData.LinkType.SpotifyPlaylist;
+        else if (message.Text.StartsWith("https://open.spotify.com/album/")) currentUser.linkType = BaseUserData.LinkType.SpotifyAlbum;
         else
         {
             usersQueue.Dequeue();
@@ -141,6 +160,18 @@ internal class Bot(string apiKey)
                 Console.ResetColor();
                 //Thread workerThreadSpotifyPlaylist = new(async () =>
                 //{
+                //    await DownloadSpotifyPlaylist(currentUser, message.Text);
+                //});
+                //workerThreadSpotifyPlaylist.Start();
+                //await telegramBotClient!.SendTextMessageAsync(userData.ChatId, "Посилання на плейлист отримано, чекаєте завантаження!");
+                await telegramBotClient!.SendTextMessageAsync(userData.ChatId, "Поки що не працює!");
+                break;
+            case BaseUserData.LinkType.SpotifyAlbum:
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine($"[INFO]: STARTED INSTALLING ALBUM FOR USER {currentUser.User.Username}!");
+                Console.ResetColor();
+                //Thread workerThreadSpotifyPlaylist = new(async () =>
+                //{
                 //    //await DownloadSpotifyPlaylist(currentUser, message.Text);
                 //});
                 // workerThreadSpotifyPlaylist.Start();
@@ -150,7 +181,7 @@ internal class Bot(string apiKey)
         usersQueue.Dequeue();
     }
 
-    private async Task HandleErrorAsync(ITelegramBotClient client, Exception exception, CancellationToken token)
+    public static async Task HandleErrorAsync(ITelegramBotClient client, Exception exception, CancellationToken token)
     {
         string errorMessage = exception switch
         {
@@ -166,35 +197,44 @@ internal class Bot(string apiKey)
         await client.SendTextMessageAsync(userData.ChatId, "Трапилась помилка, спробуйте ще раз...", cancellationToken: token);
     }
 
-    //private async Task DownloadSpotifyPlaylist(UserData currentUser, string link)
-    //{
-    //    PrepareDownloadFolder();
-    //    await telegramBotClient!.SendTextMessageAsync(currentUser.ChatId, "Завантаження плейлисту завершено!");
-    //}
-
     private async Task DownloadSpotifyTrack(UserData currentUser, string link)
     {
         PrepareDownloadFolder();
-        Track track = await spotifyClient.Tracks.GetAsync(link, default);
-        string? resultUrl = await spotifyClient.Tracks.GetSpotifyDownUrlAsync(link);
-        if (string.IsNullOrEmpty(resultUrl))
+        try
+        {
+            Track track = await spotifyClient.Tracks.GetAsync(link, default);
+            string? resultUrl = await spotifyClient.Tracks.GetDownloadUrlAsync(link);
+            if (string.IsNullOrEmpty(resultUrl))
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[WARNING | EXCEPTION]: COULDN'T FIND A DOWNLOAD URL FOR: {link}");
+                Console.ResetColor();
+                await telegramBotClient!.SendTextMessageAsync(currentUser.ChatId, "Нажаль, за цим посиланням не можливо завантажити трек, або трапилась помилка у базі, спробуйте ще раз!");
+                return;
+            }
+            lock (uniqueFileIDLock)
+            {
+                uniqueFileID++;
+                currentUser.UniqueFileID = uniqueFileID;
+            }
+            string path = Path.Combine(downloadPath, $"{track.Artists[0].Name} - {track.Title} - {currentUser.UniqueFileID}.mp3");
+            currentUser.DownloadService.DownloadFileCompleted += async(sender, e) => await Downloader_DownloadSpotifyTrackFileCompleted(currentUser, track);
+            await currentUser.DownloadService.DownloadFileTaskAsync(new DownloadPackage() { Urls = [resultUrl], FileName = path }, default);
+            currentUser.DownloadService.Resume();
+        }
+        catch
         {
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine($"[WARNING | EXCEPTION]: COULDN'T FIND A DOWNLOAD URL FOR: {link}");
             Console.ResetColor();
-            await telegramBotClient!.SendTextMessageAsync(currentUser.ChatId, "Нажаль, за цим посиланням не можливо завантажити трек :(");
-            return;
+            await telegramBotClient!.SendTextMessageAsync(currentUser.ChatId, "Нажаль, за цим посиланням не можливо завантажити трек, або трапилась помилка у базі, спробуйте ще раз!");
         }
-        string path = Path.Combine(downloadPath, $"{track.Artists[0].Name} - {track.Title}.mp3");
-        currentUser.DownloadService.DownloadFileCompleted += async(sender, e) => await Downloader_DownloadFileCompleted(currentUser, track);
-        await currentUser.DownloadService.DownloadFileTaskAsync(new DownloadPackage() { Urls = [resultUrl], FileName = path }, default);
-        currentUser.DownloadService.Resume();
     }
 
-    private async Task Downloader_DownloadFileCompleted(UserData userData, Track track)
+    private async Task Downloader_DownloadSpotifyTrackFileCompleted(UserData currentUser, Track track)
     {
         // Construct the path to the downloaded MP3 file
-        string path = Path.Combine(downloadPath, $"{track.Artists[0].Name} - {track.Title}.mp3");
+        string path = Path.Combine(downloadPath, $"{track.Artists[0].Name} - {track.Title} - {currentUser.UniqueFileID}.mp3");
 
         try
         {
@@ -202,44 +242,44 @@ internal class Bot(string apiKey)
             if (System.IO.File.Exists(path))
             {
                 // Create InputFile object from the local file
-                using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read))
+                using (FileStream stream = new(path, FileMode.Open, FileAccess.Read))
                 {
                     InputFile audioFile = InputFile.FromStream(stream);
 
                     // Send the audio file to the user
                     await telegramBotClient!.SendAudioAsync(
-                        chatId: userData.ChatId,
+                        chatId: currentUser.ChatId,
                         audio: audioFile,
-                        title: track.Title,         // Optionally send title info
+                        title: track.Title,
                         performer: track.Artists[0].Name
                     );
                 }
 
                 // Send a confirmation message after the file is sent
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"[INFO]: TRACK ({track.Artists[0].Name} - {track.Title}.mp3) IS SUCCESSFULLY UPLOADED TO USER {userData.User.Username}");
+                Console.WriteLine($"[INFO]: TRACK ({track.Artists[0].Name} - {track.Title} - {currentUser.UniqueFileID}.mp3) IS SUCCESSFULLY UPLOADED TO USER {currentUser.User.Username}");
                 Console.ResetColor();
-                await telegramBotClient!.SendTextMessageAsync(userData.ChatId, "Завантаження треку завершено!");
+                await telegramBotClient!.SendTextMessageAsync(currentUser.ChatId, $"Завантаження треку за посиланням: {track.Url} завершено!");
             }
             else
             {
                 // Handle the case where the file does not exist
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"[WARNING | EXCEPTION]: TRACK ({track.Artists[0].Name} - {track.Title}.mp3) IS DOESN'T EXIST FOR USER {userData.User.Username}");
+                Console.WriteLine($"[WARNING | EXCEPTION]: TRACK ({track.Artists[0].Name} - {track.Title} - {currentUser.UniqueFileID}.mp3) DOESN'T EXIST FOR USER {currentUser.User.Username}");
                 Console.ResetColor();
-                await telegramBotClient!.SendTextMessageAsync(userData.ChatId, "Помилка: Файл не знайдено, спробуйте ще раз...");
+                await telegramBotClient!.SendTextMessageAsync(currentUser.ChatId, "Помилка: Файл не знайдено, спробуйте ще раз...");
             }
         }
         catch (Exception ex)
         {
             // Handle any errors during file sending
             await HandleErrorAsync(telegramBotClient!, ex, default);
-            await telegramBotClient!.SendTextMessageAsync(userData.ChatId, $"Сталася помилка: {ex.Message}, напишіть розробнику, та спробуйте ще раз.");
+            await telegramBotClient!.SendTextMessageAsync(currentUser.ChatId, $"Сталася помилка: {ex.Message}, напишіть розробнику, та спробуйте ще раз.");
         }
         finally
         {
             // Cleanup - remove event handler and delete the local file
-            userData.DownloadService.Dispose();
+            currentUser.DownloadService.Dispose();
 
             // Optional: Delete the file after it's been sent (or keep it for future use)
             try

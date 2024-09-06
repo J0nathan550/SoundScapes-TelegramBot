@@ -1,7 +1,7 @@
 ﻿using Downloader;
 using Telegram.Bot.Types;
 
-namespace SoundScapes;
+namespace SoundScapes.Data;
 
 internal class UserData(User userId, ChatId chatId) : BaseUserData
 {
@@ -9,4 +9,5 @@ internal class UserData(User userId, ChatId chatId) : BaseUserData
     public User User { get; private set; } = userId;
     public ChatId ChatId { get; private set; } = chatId;
     public DownloadService DownloadService { get; set; } = new();
+    public uint UniqueFileID { get; set; } = 0;
 }

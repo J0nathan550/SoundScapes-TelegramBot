@@ -1,4 +1,4 @@
-﻿namespace SoundScapes;
+﻿namespace SoundScapes.Data;
 
 internal class BaseUserData
 {
@@ -6,6 +6,7 @@ internal class BaseUserData
     {
         None,
         SpotifyTrack,
-        SpotifyPlaylist
+        SpotifyPlaylist,
+        SpotifyAlbum
     }
 }

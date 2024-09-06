@@ -7,6 +7,10 @@ internal class BaseUserData
         None,
         SpotifyTrack,
         SpotifyPlaylist,
-        SpotifyAlbum
+        SpotifyAlbum,
+        YouTubeVideo,
+        TikTokVideo,
+        InstagramVideo,
+        TwitterVideo
     }
 }

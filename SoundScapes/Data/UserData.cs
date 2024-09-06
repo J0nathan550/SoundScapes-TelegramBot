@@ -10,4 +10,13 @@ internal class UserData(User userId, ChatId chatId) : BaseUserData
     public ChatId ChatId { get; private set; } = chatId;
     public DownloadService DownloadService { get; set; } = new();
     public uint UniqueFileID { get; set; } = 0;
+    public object UniqueFileIDObject = new();
+
+    public uint GetUniqueFileID()
+    {
+        lock (UniqueFileIDObject)
+        {
+            return ++UniqueFileID;
+        }
+    }
 }

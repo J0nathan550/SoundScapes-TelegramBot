@@ -18,8 +18,6 @@ internal class Bot(string apiKey)
     private readonly SpotifyClient spotifyClient = new();
     private readonly string downloadPath = Path.Combine(AppContext.BaseDirectory, "Downloaded");
     private readonly object uniqueFileIDLock = new();
-    private readonly object downloadSpotifyAlbumLock = new();
-    private readonly object downloadSpotifyPlaylistLock = new();
 
     private uint uniqueFileID = 0;
 

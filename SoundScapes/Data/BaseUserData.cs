@@ -6,11 +6,5 @@ internal class BaseUserData
     {
         None,
         SpotifyTrack,
-        SpotifyPlaylist,
-        SpotifyAlbum,
-        YouTubeVideo,
-        TikTokVideo,
-        InstagramVideo,
-        TwitterVideo
     }
 }

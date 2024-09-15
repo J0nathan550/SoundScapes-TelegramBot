@@ -22,8 +22,4 @@
     <PackageReference Include="YoutubeExplode" Version="6.4.0" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Instagram\" />
-  </ItemGroup>
-
 </Project>
